@@ -81,10 +81,15 @@ footer button{max-width:740px;width:100%}
   <label>Pedido / produto *</label><textarea id="product" required placeholder="Descreva o que foi encomendado"></textarea>
   <div class="grid2">
    <div><label>Quantidade *</label><input id="qty" type="number" min="1" value="1" required></div>
-   <div><label>Valor total (R$) *</label><input id="price" type="number" min="0" step="0.01" required placeholder="0,00"></div>
+   <div><label>Valor unitário (R$) *</label><input id="unitPrice" type="number" min="0" step="0.01" required placeholder="0,00"></div>
+  </div>
+  <div class="card" style="background:var(--cream);margin:10px 0;padding:14px">
+   <span class="muted">Valor total do pedido</span>
+   <div id="totalPreview" style="font-size:1.45rem;font-weight:700;color:var(--brown)">R$ 0,00</div>
+   <small class="muted">Quantidade × valor unitário</small>
   </div>
   <label>Prazo de entrega *</label><input id="deadline" type="date" required>
-  <label>Foto de referência / produto finalizado</label><input id="photo" type="file" accept="image/*" capture="environment">
+  <label>Foto de referência / produto finalizado</label><input id="photo" type="file" accept="image/*">
   <img id="photoPreview" class="photo-preview hidden" alt="Prévia da foto">
   <label>Itens que precisa comprar</label>
   <div id="materialsInput"></div>
@@ -133,7 +138,7 @@ function render(){
  let list=orders.filter(o=>currentFilter==='all'||(currentFilter==='open'&&!o.delivered)||(currentFilter==='unpaid'&&!o.paid)||(currentFilter==='done'&&o.delivered)).sort((a,b)=>a.deadline.localeCompare(b.deadline));
  $('orderList').innerHTML=list.length?list.map(o=>`<article class="card">
  <div class="order-title"><div><b>${esc(o.client)}</b><div class="muted">${esc(o.product)}</div></div><b>${money(o.price)}</b></div>
- <div class="pills"><span class="pill">Qtd: ${o.qty}</span><span class="pill">Prazo: ${dateBR(o.deadline)}</span><span class="pill">${o.paid?'Pago':'Não pago'}</span><span class="pill">${o.delivered?'Entregue':'Pendente'}</span></div>
+ <div class="pills"><span class="pill">Qtd: ${o.qty}</span>${o.unitPrice!==undefined?`<span class="pill">Unit.: ${money(o.unitPrice)}</span>`:''}<span class="pill">Prazo: ${dateBR(o.deadline)}</span><span class="pill">${o.paid?'Pago':'Não pago'}</span><span class="pill">${o.delivered?'Entregue':'Pendente'}</span></div>
  ${o.photo?`<img class="photo-preview" src="${o.photo}" alt="Foto do pedido">`:''}
  ${o.materials?.length?`<div><b>Materiais</b>${o.materials.map((m,i)=>`<label class="checkrow"><input type="checkbox" data-mat="${o.id}:${i}" ${m.done?'checked':''}>${esc(m.name)}</label>`).join('')}</div>`:''}
  ${o.notes?`<p class="muted">${esc(o.notes)}</p>`:''}
@@ -147,12 +152,14 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function dateBR(s){if(!s)return '—';let [y,m,d]=s.split('-');return `${d}/${m}/${y}`}
 function tab(name){document.querySelectorAll('main>section[id]').forEach(s=>s.classList.toggle('hidden',s.id!==name));document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));$('quickNew').classList.toggle('hidden',name==='new');}
 function addMatRow(value=''){let div=document.createElement('div');div.className='itemline';div.innerHTML=`<input placeholder="Ex.: papel fotográfico, filamento..." value="${esc(value)}"><button type="button" class="secondary">×</button>`;div.querySelector('button').onclick=()=>div.remove();$('materialsInput').append(div)}
-function resetForm(){ $('orderForm').reset();$('editId').value='';$('qty').value=1;$('materialsInput').innerHTML='';tempMaterials=[];photoData=null;$('photoPreview').classList.add('hidden');$('formTitle').textContent='Novo pedido';$('cancelEdit').classList.add('hidden')}
-function edit(o){resetForm();$('editId').value=o.id;$('client').value=o.client;$('product').value=o.product;$('qty').value=o.qty;$('price').value=o.price;$('deadline').value=o.deadline;$('paid').value=String(o.paid);$('delivered').value=String(o.delivered);$('notes').value=o.notes||'';photoData=o.photo||null;if(photoData){$('photoPreview').src=photoData;$('photoPreview').classList.remove('hidden')} (o.materials||[]).forEach(m=>{addMatRow(m.name);});tempMaterials=o.materials||[];$('formTitle').textContent='Editar pedido';$('cancelEdit').classList.remove('hidden');tab('new')}
+function resetForm(){ $('orderForm').reset();$('editId').value='';$('qty').value=1;$('unitPrice').value='';updateTotal();$('materialsInput').innerHTML='';tempMaterials=[];photoData=null;$('photoPreview').classList.add('hidden');$('formTitle').textContent='Novo pedido';$('cancelEdit').classList.add('hidden')}
+function edit(o){resetForm();$('editId').value=o.id;$('client').value=o.client;$('product').value=o.product;$('qty').value=o.qty;$('unitPrice').value=(o.unitPrice!==undefined?o.unitPrice:(Number(o.price)||0)/(Number(o.qty)||1)).toFixed(2);updateTotal();$('deadline').value=o.deadline;$('paid').value=String(o.paid);$('delivered').value=String(o.delivered);$('notes').value=o.notes||'';photoData=o.photo||null;if(photoData){$('photoPreview').src=photoData;$('photoPreview').classList.remove('hidden')} (o.materials||[]).forEach(m=>{addMatRow(m.name);});tempMaterials=o.materials||[];$('formTitle').textContent='Editar pedido';$('cancelEdit').classList.remove('hidden');tab('new')}
 $('photo').addEventListener('change',e=>{let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{photoData=r.result;$('photoPreview').src=photoData;$('photoPreview').classList.remove('hidden')};r.readAsDataURL(f)});
+function updateTotal(){const q=Math.max(0,Number($('qty').value)||0),u=Math.max(0,Number($('unitPrice').value)||0);$('totalPreview').textContent=money(q*u)}
+$('qty').addEventListener('input',updateTotal);$('unitPrice').addEventListener('input',updateTotal);
 $('addMaterial').onclick=()=>addMatRow();
 $('cancelEdit').onclick=()=>{resetForm();tab('orders')};
-$('orderForm').onsubmit=async e=>{e.preventDefault();let id=$('editId').value||crypto.randomUUID();let old=orders.find(o=>o.id===id);let names=[...$('materialsInput').querySelectorAll('input')].map(i=>i.value.trim()).filter(Boolean);let materials=names.map(n=>{let prev=(old?.materials||[]).find(m=>m.name===n);return {name:n,done:prev?.done||false}});await put({id,client:$('client').value.trim(),product:$('product').value.trim(),qty:Number($('qty').value),price:Number($('price').value),deadline:$('deadline').value,paid:$('paid').value==='true',delivered:$('delivered').value==='true',photo:photoData,materials,notes:$('notes').value,updated:new Date().toISOString()});resetForm();await refresh();tab('orders');toast('Pedido salvo com sucesso!')};
+$('orderForm').onsubmit=async e=>{e.preventDefault();let id=$('editId').value||crypto.randomUUID();let old=orders.find(o=>o.id===id);let names=[...$('materialsInput').querySelectorAll('input')].map(i=>i.value.trim()).filter(Boolean);let materials=names.map(n=>{let prev=(old?.materials||[]).find(m=>m.name===n);return {name:n,done:prev?.done||false}});await put({id,client:$('client').value.trim(),product:$('product').value.trim(),qty:Number($('qty').value),unitPrice:Number($('unitPrice').value),price:Number($('qty').value)*Number($('unitPrice').value),deadline:$('deadline').value,paid:$('paid').value==='true',delivered:$('delivered').value==='true',photo:photoData,materials,notes:$('notes').value,updated:new Date().toISOString()});resetForm();await refresh();tab('orders');toast('Pedido salvo com sucesso!')};
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
 $('quickNew').onclick=()=>{resetForm();tab('new')};
 document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{currentFilter=b.dataset.filter;render()});
